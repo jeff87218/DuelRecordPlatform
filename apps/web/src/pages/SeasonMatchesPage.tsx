@@ -1,11 +1,13 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { matchesService } from '../services/matchesService'
 import { decksService, THEME_COLORS, type DeckTheme } from '../services/decksService'
 import { useTheme } from '../contexts/ThemeContext'
 import MatchForm from '../components/MatchForm'
 import type { Match } from '../types/match'
-import { getCurrentSeasonCode } from '../utils/season'
+import { getCurrentSeasonCode, getRecentSeasonCodes, getSeasonInfo } from '../utils/season'
+import ReactECharts from 'echarts-for-react'
+import { buildSeasonStats } from '../utils/stats'
 
 // 視圖模式
 type ViewMode = 'both' | 'stats' | 'records'
@@ -57,12 +59,41 @@ export default function SeasonMatchesPage() {
   const queryClient = useQueryClient()
 
   // 取得當前賽季資訊
-  const currentSeason = getCurrentSeasonCode() // S49
+  const currentSeason = getCurrentSeasonCode() // e.g. S49
+  const [selectedSeason, setSelectedSeason] = useState(currentSeason)
+
+  const seasonOptions = useMemo(() => {
+    const codes = getRecentSeasonCodes(12, currentSeason)
+    return codes.map(code => {
+      const info = getSeasonInfo(code)
+      const ym = info ? `${info.year}/${String(info.month).padStart(2, '0')}` : ''
+      return {
+        code,
+        label: ym ? `${code} (${ym})` : code,
+        info,
+      }
+    })
+  }, [currentSeason])
+
+  const selectedSeasonInfo = useMemo(() => getSeasonInfo(selectedSeason), [selectedSeason])
+
+  type StatsFilters = {
+    myDeckMain?: string
+    oppDeckMain?: string
+    dateFrom?: string
+    dateTo?: string
+  }
+
+  const [statsFilters, setStatsFilters] = useState<StatsFilters>({})
+
+  useEffect(() => {
+    setStatsFilters({})
+  }, [selectedSeason])
 
   // 只查詢當季資料（使用 seasonCode 篩選）
   const { data, isLoading, error } = useQuery({
-    queryKey: ['matches', 'season', currentSeason],
-    queryFn: () => matchesService.getMatches({ seasonCode: currentSeason }),
+    queryKey: ['matches', 'season', selectedSeason],
+    queryFn: () => matchesService.getMatches({ seasonCode: selectedSeason }),
   })
 
   // 取得牌組模板資料
@@ -97,20 +128,36 @@ export default function SeasonMatchesPage() {
     },
   })
 
-  const wins = data?.matches.filter(m => m.result === 'W').length || 0
-  const losses = data?.matches.filter(m => m.result === 'L').length || 0
-  const total = data?.total || 0
+  const baseMatches = data?.matches ?? []
 
-  // 先後攻統計
-  const firstMatches = data?.matches.filter(m => m.playOrder === '先攻') || []
-  const secondMatches = data?.matches.filter(m => m.playOrder === '後攻') || []
-  const firstCount = firstMatches.length
-  const secondCount = secondMatches.length
-  const firstWins = firstMatches.filter(m => m.result === 'W').length
-  const secondWins = secondMatches.filter(m => m.result === 'W').length
-  const firstRate = total > 0 ? (firstCount / total) * 100 : 0
-  const firstWinRate = firstCount > 0 ? (firstWins / firstCount) * 100 : 0
-  const secondWinRate = secondCount > 0 ? (secondWins / secondCount) * 100 : 0
+  const filteredMatches = useMemo(() => {
+    const { myDeckMain, oppDeckMain, dateFrom, dateTo } = statsFilters
+    return baseMatches.filter(m => {
+      if (myDeckMain && m.myDeck.main !== myDeckMain) return false
+      if (oppDeckMain && m.oppDeck.main !== oppDeckMain) return false
+
+      const day = m.date.includes('T') ? m.date.split('T')[0] : m.date
+      if (dateFrom && day < dateFrom) return false
+      if (dateTo && day > dateTo) return false
+      return true
+    })
+  }, [baseMatches, statsFilters])
+
+  const stats = useMemo(
+    () => buildSeasonStats(filteredMatches, selectedSeasonInfo ? { start: selectedSeasonInfo.start, end: selectedSeasonInfo.end } : undefined),
+    [filteredMatches, selectedSeasonInfo],
+  )
+
+  const total = stats.total
+  const wins = stats.wins
+  const losses = stats.losses
+  const firstRate = stats.firstRate
+  const firstCount = stats.firstCount
+  const secondCount = stats.secondCount
+  const firstWinRate = stats.firstWinRate
+  const secondWinRate = stats.secondWinRate
+  const firstWins = stats.firstWins
+  const secondWins = stats.secondWins
 
   // Container 樣式
   const containerClass = `rounded-2xl p-6 ${
@@ -142,7 +189,7 @@ export default function SeasonMatchesPage() {
       myDeckMain: latestMatch.myDeck.main,
       myDeckSub: latestMatch.myDeck.sub || '無',
     } : {
-      date: new Date().toISOString().split('T')[0],
+      date: selectedSeasonInfo?.start || new Date().toISOString().split('T')[0],
       rank: '金 V',
       myDeckMain: '',
       myDeckSub: '無',
@@ -154,6 +201,7 @@ export default function SeasonMatchesPage() {
           onCancel={() => setShowAddForm(false)}
           onSuccess={() => setShowAddForm(false)}
           defaultValues={defaultValues}
+          seasonCode={selectedSeason}
         />
       </div>
     )
@@ -199,6 +247,54 @@ export default function SeasonMatchesPage() {
   const StatsContainer = () => (
     <div className={`${containerClass} ${viewMode === 'both' ? 'h-[calc(100vh-140px)] overflow-y-auto' : 'min-h-[calc(100vh-140px)]'}`}>
       <h2 className="text-xl font-bold mb-4">當季統計</h2>
+
+      {/* 篩選條件 chips */}
+      {(statsFilters.myDeckMain || statsFilters.oppDeckMain || statsFilters.dateFrom || statsFilters.dateTo) && (
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            {statsFilters.myDeckMain && (
+              <button
+                type="button"
+                onClick={() => setStatsFilters(f => ({ ...f, myDeckMain: undefined }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  isDark ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                我方：{statsFilters.myDeckMain} ×
+              </button>
+            )}
+            {statsFilters.oppDeckMain && (
+              <button
+                type="button"
+                onClick={() => setStatsFilters(f => ({ ...f, oppDeckMain: undefined }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  isDark ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                對手：{statsFilters.oppDeckMain} ×
+              </button>
+            )}
+            {(statsFilters.dateFrom || statsFilters.dateTo) && (
+              <button
+                type="button"
+                onClick={() => setStatsFilters(f => ({ ...f, dateFrom: undefined, dateTo: undefined }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  isDark ? 'bg-white/5 border-white/10 text-gray-200 hover:bg-white/10' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                日期：{statsFilters.dateFrom ?? '...'} ~ {statsFilters.dateTo ?? '...'} ×
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatsFilters({})}
+            className={`text-sm font-semibold transition-colors ${isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'}`}
+          >
+            清除篩選
+          </button>
+        </div>
+      )}
       
       {/* 總覽統計 */}
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -242,15 +338,244 @@ export default function SeasonMatchesPage() {
         </div>
       </div>
 
-      {/* 圖表區域（暫時留空） */}
-      <div className={`rounded-xl p-8 text-center ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50 border border-gray-200'}`}>
-        <div className="text-4xl mb-4">📊</div>
-        <p className={`${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-          圖表功能開發中...
-        </p>
-        <p className={`text-sm mt-2 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-          對手牌組分佈、每日勝率趨勢等
-        </p>
+      {/* 圖表 + 表格 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* 對手牌組分布（圓餅） */}
+        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50 border border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <div className={`text-xs uppercase tracking-wider font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>對手牌組分布</div>
+              <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>點擊切換篩選</div>
+            </div>
+            {statsFilters.oppDeckMain && (
+              <button
+                type="button"
+                onClick={() => setStatsFilters(f => ({ ...f, oppDeckMain: undefined }))}
+                className={`text-sm font-semibold transition-colors ${isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'}`}
+              >
+                重置
+              </button>
+            )}
+          </div>
+          <ReactECharts
+            style={{ height: 320 }}
+            option={{
+              backgroundColor: 'transparent',
+              tooltip: {
+                trigger: 'item',
+                formatter: (p: any) => `${p.name}<br/>場數：${p.value}（${p.percent}%）`,
+              },
+              series: [
+                {
+                  type: 'pie',
+                  radius: ['35%', '70%'],
+                  avoidLabelOverlap: true,
+                  itemStyle: {
+                    borderRadius: 8,
+                    borderColor: isDark ? '#16161c' : '#ffffff',
+                    borderWidth: 2,
+                    opacity: 0.95,
+                  },
+                  label: { show: false },
+                  emphasis: { label: { show: true, fontSize: 12, fontWeight: 'bold' } },
+                  data: stats.oppDecks.slice(0, 10).map(d => ({ name: d.name, value: d.games })),
+                },
+              ],
+            }}
+            onEvents={{
+              click: (p: any) => {
+                const name = String(p?.name ?? '')
+                if (!name) return
+                setStatsFilters(f => ({
+                  ...f,
+                  oppDeckMain: f.oppDeckMain === name ? undefined : name,
+                }))
+              },
+            }}
+          />
+          <div className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+            只顯示前 10 名（依場數排序）
+          </div>
+        </div>
+
+        {/* 每日勝率（雙軸：場數/勝率） */}
+        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50 border border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <div className={`text-xs uppercase tracking-wider font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>每日勝率</div>
+              <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>拖曳縮放以篩選日期</div>
+            </div>
+            {(statsFilters.dateFrom || statsFilters.dateTo) && (
+              <button
+                type="button"
+                onClick={() => setStatsFilters(f => ({ ...f, dateFrom: undefined, dateTo: undefined }))}
+                className={`text-sm font-semibold transition-colors ${isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'}`}
+              >
+                重置
+              </button>
+            )}
+          </div>
+          <ReactECharts
+            style={{ height: 320 }}
+            option={{
+              backgroundColor: 'transparent',
+              grid: { left: 44, right: 48, top: 32, bottom: 54 },
+              tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                formatter: (items: any) => {
+                  const it = Array.isArray(items) ? items : []
+                  const date = it[0]?.axisValue ?? ''
+                  const games = it.find((x: any) => x.seriesName === '場數')?.data ?? 0
+                  const rate = it.find((x: any) => x.seriesName === '勝率')?.data
+                  const rateText = rate == null ? '-' : `${Number(rate).toFixed(1)}%`
+                  return `${date}<br/>場數：${games}<br/>勝率：${rateText}`
+                },
+              },
+              xAxis: {
+                type: 'category',
+                data: stats.daily.map(d => d.date),
+                axisLabel: { color: isDark ? '#9ca3af' : '#6b7280', formatter: (v: string) => v.slice(5) },
+                axisLine: { lineStyle: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)' } },
+              },
+              yAxis: [
+                {
+                  type: 'value',
+                  name: '場數',
+                  nameTextStyle: { color: isDark ? '#9ca3af' : '#6b7280' },
+                  axisLabel: { color: isDark ? '#9ca3af' : '#6b7280' },
+                  splitLine: { lineStyle: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' } },
+                },
+                {
+                  type: 'value',
+                  name: '勝率',
+                  min: 0,
+                  max: 100,
+                  nameTextStyle: { color: isDark ? '#9ca3af' : '#6b7280' },
+                  axisLabel: { color: isDark ? '#9ca3af' : '#6b7280', formatter: '{value}%' },
+                  splitLine: { show: false },
+                },
+              ],
+              dataZoom: [
+                {
+                  type: 'inside',
+                  realtime: false,
+                  startValue: statsFilters.dateFrom
+                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateFrom))
+                    : undefined,
+                  endValue: statsFilters.dateTo
+                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateTo))
+                    : undefined,
+                },
+                {
+                  type: 'slider',
+                  realtime: false,
+                  height: 18,
+                  startValue: statsFilters.dateFrom
+                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateFrom))
+                    : undefined,
+                  endValue: statsFilters.dateTo
+                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateTo))
+                    : undefined,
+                },
+              ],
+              series: [
+                {
+                  name: '場數',
+                  type: 'bar',
+                  yAxisIndex: 0,
+                  data: stats.daily.map(d => d.games),
+                  itemStyle: { color: isDark ? 'rgba(99,102,241,0.55)' : 'rgba(99,102,241,0.35)', borderRadius: [4, 4, 0, 0] },
+                },
+                {
+                  name: '勝率',
+                  type: 'line',
+                  yAxisIndex: 1,
+                  data: stats.daily.map(d => (d.winRate == null ? null : Number(d.winRate.toFixed(2)))),
+                  smooth: true,
+                  symbolSize: 6,
+                  lineStyle: { width: 3, color: isDark ? '#22c55e' : '#16a34a' },
+                  itemStyle: { color: isDark ? '#22c55e' : '#16a34a' },
+                },
+              ],
+            }}
+            onEvents={{
+              datazoom: (p: any) => {
+                const batch = Array.isArray(p?.batch) ? p.batch[0] : null
+                const startValue = batch?.startValue
+                const endValue = batch?.endValue
+                const axis = stats.daily.map(d => d.date)
+
+                const start = typeof startValue === 'number' ? axis[startValue] : startValue
+                const end = typeof endValue === 'number' ? axis[endValue] : endValue
+
+                if (typeof start === 'string' && typeof end === 'string') {
+                  setStatsFilters(f => ({ ...f, dateFrom: start, dateTo: end }))
+                }
+              },
+              click: (p: any) => {
+                const date = String(p?.name ?? '')
+                if (!date) return
+                setStatsFilters(f => ({ ...f, dateFrom: date, dateTo: date }))
+              },
+            }}
+          />
+        </div>
+      </div>
+
+      {/* 我方常用牌組（點擊篩選） */}
+      <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-[#1e1e26]' : 'bg-white border border-gray-200'}`}>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <div className={`text-xs uppercase tracking-wider font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>我方常用牌組</div>
+            <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>點擊列以篩選</div>
+          </div>
+          {statsFilters.myDeckMain && (
+            <button
+              type="button"
+              onClick={() => setStatsFilters(f => ({ ...f, myDeckMain: undefined }))}
+              className={`text-sm font-semibold transition-colors ${isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'}`}
+            >
+              重置
+            </button>
+          )}
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          <table className="w-full">
+            <thead className={isDark ? 'border-b border-white/10' : 'border-b border-gray-200 bg-gray-50'}>
+              <tr>
+                <th className={`px-4 py-2 text-left text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>牌組</th>
+                <th className={`px-4 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>場數</th>
+                <th className={`px-4 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>勝率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.myDecks.slice(0, 20).map((row, idx) => {
+                const selected = statsFilters.myDeckMain === row.name
+                return (
+                  <tr
+                    key={row.name}
+                    onClick={() => setStatsFilters(f => ({ ...f, myDeckMain: f.myDeckMain === row.name ? undefined : row.name }))}
+                    className={`cursor-pointer transition-colors ${
+                      isDark
+                        ? `border-b border-white/5 hover:bg-white/5 ${selected ? 'bg-indigo-500/15' : idx % 2 === 1 ? 'bg-white/[0.02]' : ''}`
+                        : `border-b border-gray-100 hover:bg-gray-50 ${selected ? 'bg-indigo-50' : idx % 2 === 1 ? 'bg-gray-50/50' : ''}`
+                    }`}
+                  >
+                    <td className={`px-4 py-2 text-sm font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{row.name}</td>
+                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.games}</td>
+                    <td className={`px-4 py-2 text-sm text-right font-bold ${row.winRate >= 50 ? 'text-green-500' : 'text-red-500'}`}>
+                      {row.winRate.toFixed(1)}%
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className={`px-4 py-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+          只顯示前 20 名（依場數排序）
+        </div>
       </div>
     </div>
   )
@@ -264,7 +589,7 @@ export default function SeasonMatchesPage() {
           <div>
             <h2 className="text-xl font-bold mb-1">當季記錄</h2>
             <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-              {currentSeason} · Master Duel
+              {selectedSeason} · Master Duel
             </p>
           </div>
           <button 
@@ -323,7 +648,7 @@ export default function SeasonMatchesPage() {
       </div>
 
       {/* 表格區域 */}
-      {data && data.matches.length > 0 && (
+      {data && filteredMatches.length > 0 && (
         <div className={`flex-1 flex flex-col rounded-xl overflow-hidden ${
           isDark ? 'bg-[#1e1e26]' : 'bg-white border border-gray-200'
         }`}>
@@ -361,7 +686,7 @@ export default function SeasonMatchesPage() {
                 <col className="w-[60px]" />
               </colgroup>
               <tbody>
-                {data.matches.map((match, index) => (
+                {filteredMatches.map((match, index) => (
                   <tr 
                     key={match.id} 
                     className={`group transition-colors ${
@@ -464,10 +789,10 @@ export default function SeasonMatchesPage() {
       )}
 
       {/* 空狀態 */}
-      {data && data.matches.length === 0 && (
+      {data && filteredMatches.length === 0 && (
         <div className={`rounded-xl p-12 text-center ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50'}`}>
           <div className="text-4xl mb-4">🎮</div>
-          <p className="text-gray-500 mb-4">本季尚無對局記錄</p>
+          <p className="text-gray-500 mb-4">目前篩選條件下沒有對局記錄</p>
           <button 
             onClick={() => setShowAddForm(true)}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
@@ -483,7 +808,29 @@ export default function SeasonMatchesPage() {
     <div>
       {/* 頂部工具列 */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">當季記錄 · {currentSeason}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">當季記錄</h1>
+          <select
+            value={selectedSeason}
+            onChange={(e) => setSelectedSeason(e.target.value)}
+            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors focus:outline-none focus:border-indigo-500 ${
+              isDark
+                ? 'bg-[#1e1e26] border-white/10 text-white'
+                : 'bg-white border-gray-300 text-gray-900'
+            }`}
+          >
+            {seasonOptions.map(opt => (
+              <option key={opt.code} value={opt.code}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          {selectedSeasonInfo && (
+            <span className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              {selectedSeasonInfo.start} ~ {selectedSeasonInfo.end}
+            </span>
+          )}
+        </div>
         <ViewToggle />
       </div>
 

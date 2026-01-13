@@ -25,6 +25,7 @@ func (h *MatchesHandler) GetMatches(c *fiber.Ctx) error {
 	// 取得查詢參數
 	seasonCode := c.Query("seasonCode")
 	myDeckMain := c.Query("myDeckMain")
+	oppDeckMain := c.Query("oppDeckMain")
 	result := c.Query("result")
 	playOrder := c.Query("playOrder")
 	dateFrom := c.Query("dateFrom")
@@ -68,6 +69,12 @@ func (h *MatchesHandler) GetMatches(c *fiber.Ctx) error {
 	if myDeckMain != "" {
 		query += fmt.Sprintf(" AND my_deck.main = $%d", argPos)
 		args = append(args, myDeckMain)
+		argPos++
+	}
+
+	if oppDeckMain != "" {
+		query += fmt.Sprintf(" AND opp_deck.main = $%d", argPos)
+		args = append(args, oppDeckMain)
 		argPos++
 	}
 

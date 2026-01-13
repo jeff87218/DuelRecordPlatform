@@ -18,6 +18,7 @@ interface MatchFormProps {
   onSuccess: () => void
   defaultValues?: DefaultValues
   editMatch?: Match  // 如果有值，代表是編輯模式
+  seasonCode?: string
 }
 
 // 階級選項
@@ -38,7 +39,7 @@ function parseRank(rank: string): { tier: string; level: string } {
   return { tier: '金', level: 'V' }
 }
 
-export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatch }: MatchFormProps) {
+export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatch, seasonCode }: MatchFormProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const queryClient = useQueryClient()
@@ -132,8 +133,7 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
   // 組合階級字串（tier 和 level 之間加空格，與資料庫格式一致）
   const rank = `${rankTier} ${rankLevel}`
 
-  // 取得當前賽季代碼
-  const currentSeasonCode = getCurrentSeasonCode()
+  const seasonCodeForCreate = seasonCode ?? getCurrentSeasonCode()
 
   // 處理副軸值（空白、「無」都視為 null）
   const getSubValue = (sub: string, subSearch: string) => {
@@ -146,7 +146,7 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
   const createMutation = useMutation({
     mutationFn: () => matchesService.createMatch({
       gameKey: 'master_duel',
-      seasonCode: currentSeasonCode,
+      seasonCode: seasonCodeForCreate,
       date,
       rank,
       myDeck: { main: myDeckMain || myDeckSearch, sub: getSubValue(myDeckSub, mySubSearch) },

@@ -5,6 +5,7 @@ import type { MatchesResponse, CreateMatchRequest, UpdateMatchRequest } from '..
 interface GetMatchesParams {
   seasonCode?: string
   myDeckMain?: string
+  oppDeckMain?: string
   result?: 'W' | 'L'
   playOrder?: '先攻' | '後攻'
   dateFrom?: string
