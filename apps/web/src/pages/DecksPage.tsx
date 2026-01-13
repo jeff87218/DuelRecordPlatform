@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTheme } from '../contexts/ThemeContext'
 import { decksService, THEME_COLORS, THEME_OPTIONS, type DeckTheme, type DeckTemplate } from '../services/decksService'
@@ -12,6 +12,7 @@ export default function DecksPage() {
   const [newDeckName, setNewDeckName] = useState('')
   const [newDeckTheme, setNewDeckTheme] = useState<DeckTheme>('連結')
   const [editingDeck, setEditingDeck] = useState<DeckTemplate | null>(null)
+  const formRef = useRef<HTMLDivElement>(null)
 
   // 取得牌組資料
   const { data, isLoading } = useQuery({
@@ -83,6 +84,20 @@ export default function DecksPage() {
     setNewDeckTheme(deck.theme as DeckTheme)
   }
 
+  // 當表單顯示時，自動滾動到表單位置
+  useEffect(() => {
+    if ((showAddForm || editingDeck) && formRef.current) {
+      // 使用 setTimeout 確保 DOM 已更新
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start',
+          inline: 'nearest'
+        })
+      }, 100)
+    }
+  }, [showAddForm, editingDeck])
+
   const cancelEdit = () => {
     setEditingDeck(null)
     setNewDeckName('')
@@ -114,7 +129,10 @@ export default function DecksPage() {
 
         {/* 新增/編輯表單 */}
         {(showAddForm || editingDeck) && (
-          <div className={`mb-6 p-4 rounded-xl ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50 border border-gray-200'}`}>
+          <div 
+            ref={formRef}
+            className={`mb-6 p-4 rounded-xl ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50 border border-gray-200'}`}
+          >
             <h3 className="text-lg font-bold mb-4">
               {editingDeck ? '編輯牌組' : '新增牌組'}
             </h3>
@@ -135,29 +153,37 @@ export default function DecksPage() {
                   } focus:outline-none`}
                 />
               </div>
-              <div>
-                <label className={`block text-sm font-bold mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  主題類型
-                </label>
-                <select
-                  value={newDeckTheme}
-                  onChange={(e) => setNewDeckTheme(e.target.value as DeckTheme)}
-                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${
-                    isDark 
-                      ? 'bg-[#16161c] border-white/10 text-white focus:border-indigo-500' 
-                      : 'bg-white border-gray-300 text-gray-900 focus:border-indigo-500'
-                  } focus:outline-none`}
-                >
-                  {THEME_OPTIONS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+            </div>
+            {/* 主題類型選擇 - 按鈕式 */}
+            <div className="mb-4">
+              <label className={`block text-sm font-bold mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                主題類型
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {THEME_OPTIONS.map((t) => {
+                  const isSelected = newDeckTheme === t
+                  const colors = THEME_COLORS[t]
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setNewDeckTheme(t)}
+                      className={`px-3 py-1.5 text-sm font-medium rounded transition-all ${
+                        isSelected
+                          ? `${colors.bg} ${colors.text} ring-2 ring-offset-2 ${isDark ? 'ring-offset-[#1e1e26]' : 'ring-offset-gray-50'} ring-indigo-500`
+                          : `${colors.bg} ${colors.text} opacity-50 hover:opacity-80`
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  )
+                })}
               </div>
             </div>
             {/* 顏色預覽 */}
             <div className="mb-4">
               <label className={`block text-sm font-bold mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                顏色預覽
+                預覽
               </label>
               <span className={`inline-block px-3 py-1.5 rounded font-bold ${THEME_COLORS[newDeckTheme].bg} ${THEME_COLORS[newDeckTheme].text}`}>
                 {newDeckName || '牌組名稱'}
