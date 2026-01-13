@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { matchesService } from '../services/matchesService'
 import { decksService } from '../services/decksService'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCurrentSeasonCode } from '../utils/season'
 import type { Match } from '../types/match'
 
 interface DefaultValues {
@@ -27,7 +28,8 @@ const RANK_LEVELS = ['V', 'IV', 'III', 'II', 'I'] as const
 function parseRank(rank: string): { tier: string; level: string } {
   for (const tier of RANK_TIERS) {
     if (rank.startsWith(tier)) {
-      const level = rank.replace(tier, '')
+      // 移除 tier 並去除空格
+      const level = rank.replace(tier, '').trim()
       if (RANK_LEVELS.includes(level as typeof RANK_LEVELS[number])) {
         return { tier, level }
       }
@@ -50,7 +52,12 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
 
   // 所有牌組選項（不分主副軸）
   const allDecks = useMemo(() => {
-    return deckTemplatesData?.templates.map(t => t.name) || []
+    const decks = deckTemplatesData?.templates.map(t => t.name) || []
+    // 確保「無」在列表開頭
+    if (!decks.includes('無')) {
+      return ['無', ...decks]
+    }
+    return decks
   }, [deckTemplatesData])
 
   // 決定初始值來源：編輯模式用 editMatch，新增模式用 defaultValues
@@ -66,7 +73,7 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
     note: editMatch.note || '',
   } : {
     date: defaultValues?.date?.split('T')[0] || new Date().toISOString().split('T')[0],
-    rank: defaultValues?.rank || '金V',
+    rank: defaultValues?.rank || '金 V',
     myDeckMain: defaultValues?.myDeckMain || '',
     myDeckSub: defaultValues?.myDeckSub || '無',
     oppDeckMain: '',
@@ -93,9 +100,13 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
 
   // 搜尋狀態
   const [myDeckSearch, setMyDeckSearch] = useState('')
+  const [mySubSearch, setMySubSearch] = useState('')
   const [oppDeckSearch, setOppDeckSearch] = useState('')
+  const [oppSubSearch, setOppSubSearch] = useState('')
   const [showMyDeckDropdown, setShowMyDeckDropdown] = useState(false)
+  const [showMySubDropdown, setShowMySubDropdown] = useState(false)
   const [showOppDeckDropdown, setShowOppDeckDropdown] = useState(false)
+  const [showOppSubDropdown, setShowOppSubDropdown] = useState(false)
 
   // 篩選牌組選項
   const filteredMyDecks = useMemo(() => {
@@ -103,23 +114,43 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
     return allDecks.filter(d => d.toLowerCase().includes(myDeckSearch.toLowerCase()))
   }, [myDeckSearch, allDecks])
 
+  const filteredMySubs = useMemo(() => {
+    if (!mySubSearch) return allDecks
+    return allDecks.filter(d => d.toLowerCase().includes(mySubSearch.toLowerCase()))
+  }, [mySubSearch, allDecks])
+
   const filteredOppDecks = useMemo(() => {
     if (!oppDeckSearch) return allDecks
     return allDecks.filter(d => d.toLowerCase().includes(oppDeckSearch.toLowerCase()))
   }, [oppDeckSearch, allDecks])
 
-  // 組合階級字串
-  const rank = `${rankTier}${rankLevel}`
+  const filteredOppSubs = useMemo(() => {
+    if (!oppSubSearch) return allDecks
+    return allDecks.filter(d => d.toLowerCase().includes(oppSubSearch.toLowerCase()))
+  }, [oppSubSearch, allDecks])
+
+  // 組合階級字串（tier 和 level 之間加空格，與資料庫格式一致）
+  const rank = `${rankTier} ${rankLevel}`
+
+  // 取得當前賽季代碼
+  const currentSeasonCode = getCurrentSeasonCode()
+
+  // 處理副軸值（空白、「無」都視為 null）
+  const getSubValue = (sub: string, subSearch: string) => {
+    const value = sub || subSearch
+    if (!value || value === '無' || value.trim() === '') return null
+    return value
+  }
 
   // 新增 mutation
   const createMutation = useMutation({
     mutationFn: () => matchesService.createMatch({
       gameKey: 'master_duel',
-      seasonCode: 'S48',
+      seasonCode: currentSeasonCode,
       date,
       rank,
-      myDeck: { main: myDeckMain || myDeckSearch, sub: myDeckSub === '無' ? null : myDeckSub },
-      oppDeck: { main: oppDeckMain || oppDeckSearch, sub: oppDeckSub === '無' ? null : oppDeckSub },
+      myDeck: { main: myDeckMain || myDeckSearch, sub: getSubValue(myDeckSub, mySubSearch) },
+      oppDeck: { main: oppDeckMain || oppDeckSearch, sub: getSubValue(oppDeckSub, oppSubSearch) },
       playOrder,
       result,
       note: note || undefined,
@@ -135,8 +166,8 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
     mutationFn: () => matchesService.updateMatch(editMatch!.id, {
       date,
       rank,
-      myDeck: { main: myDeckMain || myDeckSearch, sub: myDeckSub === '無' ? null : myDeckSub },
-      oppDeck: { main: oppDeckMain || oppDeckSearch, sub: oppDeckSub === '無' ? null : oppDeckSub },
+      myDeck: { main: myDeckMain || myDeckSearch, sub: getSubValue(myDeckSub, mySubSearch) },
+      oppDeck: { main: oppDeckMain || oppDeckSearch, sub: getSubValue(oppDeckSub, oppSubSearch) },
       playOrder,
       result,
       note: note || undefined,
@@ -286,17 +317,43 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
               </div>
             )}
           </div>
-          <div>
+          <div className="relative">
             <label className={labelClass}>副軸</label>
-            <select
-              value={myDeckSub}
-              onChange={(e) => setMyDeckSub(e.target.value)}
+            <input
+              type="text"
+              value={myDeckSub || mySubSearch}
+              onChange={(e) => {
+                setMySubSearch(e.target.value)
+                setMyDeckSub('')
+                setShowMySubDropdown(true)
+              }}
+              onFocus={() => setShowMySubDropdown(true)}
+              onBlur={() => setTimeout(() => setShowMySubDropdown(false), 200)}
+              placeholder="搜尋或輸入 (無則留空)..."
               className={inputClass}
-            >
-              {allDecks.map(deck => (
-                <option key={deck} value={deck}>{deck}</option>
-              ))}
-            </select>
+            />
+            {showMySubDropdown && filteredMySubs.length > 0 && (
+              <div className={`absolute z-10 w-full mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg ${
+                isDark ? 'bg-[#1e1e26] border-white/10' : 'bg-white border-gray-200'
+              }`}>
+                {filteredMySubs.map(deck => (
+                  <button
+                    key={deck}
+                    type="button"
+                    onClick={() => {
+                      setMyDeckSub(deck)
+                      setMySubSearch('')
+                      setShowMySubDropdown(false)
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                      isDark ? 'hover:bg-white/10' : 'hover:bg-gray-100'
+                    }`}
+                  >
+                    {deck}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -340,17 +397,43 @@ export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatc
               </div>
             )}
           </div>
-          <div>
+          <div className="relative">
             <label className={labelClass}>副軸</label>
-            <select
-              value={oppDeckSub}
-              onChange={(e) => setOppDeckSub(e.target.value)}
+            <input
+              type="text"
+              value={oppDeckSub || oppSubSearch}
+              onChange={(e) => {
+                setOppSubSearch(e.target.value)
+                setOppDeckSub('')
+                setShowOppSubDropdown(true)
+              }}
+              onFocus={() => setShowOppSubDropdown(true)}
+              onBlur={() => setTimeout(() => setShowOppSubDropdown(false), 200)}
+              placeholder="搜尋或輸入 (無則留空)..."
               className={inputClass}
-            >
-              {allDecks.map(deck => (
-                <option key={deck} value={deck}>{deck}</option>
-              ))}
-            </select>
+            />
+            {showOppSubDropdown && filteredOppSubs.length > 0 && (
+              <div className={`absolute z-10 w-full mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg ${
+                isDark ? 'bg-[#1e1e26] border-white/10' : 'bg-white border-gray-200'
+              }`}>
+                {filteredOppSubs.map(deck => (
+                  <button
+                    key={deck}
+                    type="button"
+                    onClick={() => {
+                      setOppDeckSub(deck)
+                      setOppSubSearch('')
+                      setShowOppSubDropdown(false)
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                      isDark ? 'hover:bg-white/10' : 'hover:bg-gray-100'
+                    }`}
+                  >
+                    {deck}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

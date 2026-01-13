@@ -5,6 +5,7 @@ import { decksService, THEME_COLORS, type DeckTheme } from '../services/decksSer
 import { useTheme } from '../contexts/ThemeContext'
 import MatchForm from '../components/MatchForm'
 import type { Match } from '../types/match'
+import { getCurrentSeasonCode } from '../utils/season'
 
 // 視圖模式
 type ViewMode = 'both' | 'stats' | 'records'
@@ -46,7 +47,7 @@ function getRankColor(rank: string, isDark: boolean): string {
     : 'bg-gray-100 text-gray-600 border border-gray-300'
 }
 
-export default function MatchesPage() {
+export default function SeasonMatchesPage() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [viewMode, setViewMode] = useState<ViewMode>('records')
@@ -55,9 +56,13 @@ export default function MatchesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
+  // 取得當前賽季資訊
+  const currentSeason = getCurrentSeasonCode() // S49
+
+  // 只查詢當季資料（使用 seasonCode 篩選）
   const { data, isLoading, error } = useQuery({
-    queryKey: ['matches'],
-    queryFn: () => matchesService.getMatches(),
+    queryKey: ['matches', 'season', currentSeason],
+    queryFn: () => matchesService.getMatches({ seasonCode: currentSeason }),
   })
 
   // 取得牌組模板資料
@@ -103,9 +108,9 @@ export default function MatchesPage() {
   const secondCount = secondMatches.length
   const firstWins = firstMatches.filter(m => m.result === 'W').length
   const secondWins = secondMatches.filter(m => m.result === 'W').length
-  const firstRate = total > 0 ? (firstCount / total) * 100 : 0  // 先攻率
-  const firstWinRate = firstCount > 0 ? (firstWins / firstCount) * 100 : 0  // 先攻勝率
-  const secondWinRate = secondCount > 0 ? (secondWins / secondCount) * 100 : 0  // 後攻勝率
+  const firstRate = total > 0 ? (firstCount / total) * 100 : 0
+  const firstWinRate = firstCount > 0 ? (firstWins / firstCount) * 100 : 0
+  const secondWinRate = secondCount > 0 ? (secondWins / secondCount) * 100 : 0
 
   // Container 樣式
   const containerClass = `rounded-2xl p-6 ${
@@ -129,18 +134,26 @@ export default function MatchesPage() {
 
   // 顯示新增表單
   if (showAddForm) {
+    // 取得最新一筆紀錄作為預設值
     const latestMatch = data?.matches[0]
+    const defaultValues = latestMatch ? {
+      date: latestMatch.date.split('T')[0],
+      rank: latestMatch.rank,
+      myDeckMain: latestMatch.myDeck.main,
+      myDeckSub: latestMatch.myDeck.sub || '無',
+    } : {
+      date: new Date().toISOString().split('T')[0],
+      rank: '金 V',
+      myDeckMain: '',
+      myDeckSub: '無',
+    }
+    
     return (
       <div className={containerClass}>
         <MatchForm
           onCancel={() => setShowAddForm(false)}
           onSuccess={() => setShowAddForm(false)}
-          defaultValues={latestMatch ? {
-            date: latestMatch.date.split('T')[0],
-            rank: latestMatch.rank,
-            myDeckMain: latestMatch.myDeck.main,
-            myDeckSub: latestMatch.myDeck.sub || '無',
-          } : undefined}
+          defaultValues={defaultValues}
         />
       </div>
     )
@@ -185,7 +198,7 @@ export default function MatchesPage() {
   // 統計視覺化 Container
   const StatsContainer = () => (
     <div className={`${containerClass} ${viewMode === 'both' ? 'h-[calc(100vh-140px)] overflow-y-auto' : 'min-h-[calc(100vh-140px)]'}`}>
-      <h2 className="text-xl font-bold mb-4">統計分析</h2>
+      <h2 className="text-xl font-bold mb-4">當季統計</h2>
       
       {/* 總覽統計 */}
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -249,9 +262,9 @@ export default function MatchesPage() {
       <div className="flex-shrink-0">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-bold mb-1">對局記錄</h2>
+            <h2 className="text-xl font-bold mb-1">當季記錄</h2>
             <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-              Season 48 · Master Duel
+              {currentSeason} · Master Duel
             </p>
           </div>
           <button 
@@ -454,7 +467,7 @@ export default function MatchesPage() {
       {data && data.matches.length === 0 && (
         <div className={`rounded-xl p-12 text-center ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50'}`}>
           <div className="text-4xl mb-4">🎮</div>
-          <p className="text-gray-500 mb-4">尚無對局記錄</p>
+          <p className="text-gray-500 mb-4">本季尚無對局記錄</p>
           <button 
             onClick={() => setShowAddForm(true)}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
@@ -470,7 +483,7 @@ export default function MatchesPage() {
     <div>
       {/* 頂部工具列 */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">DuelLog</h1>
+        <h1 className="text-2xl font-bold">當季記錄 · {currentSeason}</h1>
         <ViewToggle />
       </div>
 

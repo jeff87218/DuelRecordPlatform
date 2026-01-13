@@ -353,7 +353,30 @@ func (h *MatchesHandler) findOrCreateDeck(gameID, main string, sub *string) (str
 		return "", err
 	}
 
+	// 同時確保 deck_templates 中有這個牌組（用於顏色顯示）
+	h.ensureDeckTemplate(gameID, main)
+	if sub != nil && *sub != "" && *sub != "無" {
+		h.ensureDeckTemplate(gameID, *sub)
+	}
+
 	return deckID, nil
+}
+
+// ensureDeckTemplate 確保牌組模板存在，不存在則建立（預設主題為「無」）
+func (h *MatchesHandler) ensureDeckTemplate(gameID, deckName string) {
+	// 檢查是否已存在
+	var exists bool
+	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM deck_templates WHERE main = ?)", deckName).Scan(&exists)
+	if err != nil || exists {
+		return // 已存在或查詢失敗，不需要建立
+	}
+
+	// 不存在，建立新的模板（預設主題為「無」= 灰色）
+	templateID := "tpl-auto-" + uuid.New().String()[:8]
+	_, _ = h.db.Exec(`
+		INSERT INTO deck_templates (id, game_id, main, theme, deck_type, created_at)
+		VALUES (?, ?, ?, '無', 'main', CURRENT_TIMESTAMP)
+	`, templateID, gameID, deckName)
 }
 
 // joinStrings 連接字串陣列（輔助函數）

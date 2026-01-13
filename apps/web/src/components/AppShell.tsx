@@ -7,8 +7,17 @@ export default function AppShell() {
 
   const navItems = [
     { 
-      path: '/matches', 
-      label: '對局記錄',
+      path: '/season', 
+      label: '當季記錄',
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      )
+    },
+    { 
+      path: '/history', 
+      label: '歷史總記錄',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -39,9 +48,12 @@ export default function AppShell() {
           : 'bg-white border-r border-gray-200'
       }`}>
         {/* Logo */}
-        <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-lg text-white mb-8">
-          D
-        </div>
+        <img
+          src="https://shared.fastly.steamstatic.com/community_assets/images/apps/1449850/406324fa371f190a0392f5e4e76d595e7ae962f5.jpg"
+          alt="Yu-Gi-Oh! Master Duel"
+          className="w-10 h-10 rounded-xl mb-8 object-cover"
+          loading="lazy"
+        />
 
         {/* Nav Icons */}
         <nav className="flex flex-col gap-2">
