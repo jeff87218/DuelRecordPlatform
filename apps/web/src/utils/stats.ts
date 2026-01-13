@@ -12,7 +12,17 @@ export interface DailyStatRow {
   date: string // YYYY-MM-DD
   games: number
   wins: number
+  losses: number
+  first: number
+  second: number
+  firstWins: number
+  firstLosses: number
+  secondWins: number
+  secondLosses: number
+  firstRate: number | null // 0-100
   winRate: number | null // null when games == 0
+  firstWinRate: number | null
+  secondWinRate: number | null
 }
 
 export interface SeasonStats {
@@ -116,12 +126,46 @@ export function buildSeasonStats(matches: Match[], range?: { start: string; end:
     Array.from(myMap.entries()).map(([name, v]) => ({ name, wins: v.wins, losses: v.losses })),
   )
 
-  const dailyMap = new Map<string, { wins: number; losses: number }>()
+  const dailyMap = new Map<
+    string,
+    {
+      wins: number
+      losses: number
+      first: number
+      second: number
+      firstWins: number
+      firstLosses: number
+      secondWins: number
+      secondLosses: number
+    }
+  >()
   for (const m of matches) {
     const key = dateKeyFromMatch(m)
-    const entry = dailyMap.get(key) ?? { wins: 0, losses: 0 }
-    if (m.result === 'W') entry.wins += 1
+    const entry = dailyMap.get(key) ?? {
+      wins: 0,
+      losses: 0,
+      first: 0,
+      second: 0,
+      firstWins: 0,
+      firstLosses: 0,
+      secondWins: 0,
+      secondLosses: 0,
+    }
+
+    const isWin = m.result === 'W'
+    if (isWin) entry.wins += 1
     else entry.losses += 1
+
+    if (m.playOrder === '先攻') {
+      entry.first += 1
+      if (isWin) entry.firstWins += 1
+      else entry.firstLosses += 1
+    } else {
+      entry.second += 1
+      if (isWin) entry.secondWins += 1
+      else entry.secondLosses += 1
+    }
+
     dailyMap.set(key, entry)
   }
 
@@ -134,11 +178,28 @@ export function buildSeasonStats(matches: Match[], range?: { start: string; end:
       const entry = dailyMap.get(key)
       const games = entry ? entry.wins + entry.losses : 0
       const win = entry ? entry.wins : 0
+      const loss = entry ? entry.losses : 0
+      const first = entry ? entry.first : 0
+      const second = entry ? entry.second : 0
+      const firstWinsDay = entry ? entry.firstWins : 0
+      const secondWinsDay = entry ? entry.secondWins : 0
+      const firstLossesDay = entry ? entry.firstLosses : 0
+      const secondLossesDay = entry ? entry.secondLosses : 0
       daily.push({
         date: key,
         games,
         wins: win,
+        losses: loss,
+        first,
+        second,
+        firstWins: firstWinsDay,
+        firstLosses: firstLossesDay,
+        secondWins: secondWinsDay,
+        secondLosses: secondLossesDay,
+        firstRate: games > 0 ? (first / games) * 100 : null,
         winRate: games > 0 ? (win / games) * 100 : null,
+        firstWinRate: first > 0 ? (firstWinsDay / first) * 100 : null,
+        secondWinRate: second > 0 ? (secondWinsDay / second) * 100 : null,
       })
     }
   } else {
@@ -149,7 +210,17 @@ export function buildSeasonStats(matches: Match[], range?: { start: string; end:
           date,
           games,
           wins: v.wins,
+          losses: v.losses,
+          first: v.first,
+          second: v.second,
+          firstWins: v.firstWins,
+          firstLosses: v.firstLosses,
+          secondWins: v.secondWins,
+          secondLosses: v.secondLosses,
+          firstRate: games > 0 ? (v.first / games) * 100 : null,
           winRate: games > 0 ? (v.wins / games) * 100 : null,
+          firstWinRate: v.first > 0 ? (v.firstWins / v.first) * 100 : null,
+          secondWinRate: v.second > 0 ? (v.secondWins / v.second) * 100 : null,
         }
       })
       .sort((a, b) => a.date.localeCompare(b.date))

@@ -398,128 +398,55 @@ export default function SeasonMatchesPage() {
           </div>
         </div>
 
-        {/* 每日勝率（雙軸：場數/勝率） */}
-        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1e1e26]' : 'bg-gray-50 border border-gray-200'}`}>
-          <div className="flex items-center justify-between mb-2">
+        {/* 對手牌組使用（表格） */}
+        <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-[#1e1e26]' : 'bg-white border border-gray-200'}`}>
+          <div className="flex items-center justify-between px-4 py-3">
             <div>
-              <div className={`text-xs uppercase tracking-wider font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>每日勝率</div>
-              <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>拖曳縮放以篩選日期</div>
+              <div className={`text-xs uppercase tracking-wider font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>對手牌組（場數）</div>
+              <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>點擊列以篩選</div>
             </div>
-            {(statsFilters.dateFrom || statsFilters.dateTo) && (
+            {statsFilters.oppDeckMain && (
               <button
                 type="button"
-                onClick={() => setStatsFilters(f => ({ ...f, dateFrom: undefined, dateTo: undefined }))}
+                onClick={() => setStatsFilters(f => ({ ...f, oppDeckMain: undefined }))}
                 className={`text-sm font-semibold transition-colors ${isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'}`}
               >
                 重置
               </button>
             )}
           </div>
-          <ReactECharts
-            style={{ height: 320 }}
-            option={{
-              backgroundColor: 'transparent',
-              grid: { left: 44, right: 48, top: 32, bottom: 54 },
-              tooltip: {
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: (items: any) => {
-                  const it = Array.isArray(items) ? items : []
-                  const date = it[0]?.axisValue ?? ''
-                  const games = it.find((x: any) => x.seriesName === '場數')?.data ?? 0
-                  const rate = it.find((x: any) => x.seriesName === '勝率')?.data
-                  const rateText = rate == null ? '-' : `${Number(rate).toFixed(1)}%`
-                  return `${date}<br/>場數：${games}<br/>勝率：${rateText}`
-                },
-              },
-              xAxis: {
-                type: 'category',
-                data: stats.daily.map(d => d.date),
-                axisLabel: { color: isDark ? '#9ca3af' : '#6b7280', formatter: (v: string) => v.slice(5) },
-                axisLine: { lineStyle: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)' } },
-              },
-              yAxis: [
-                {
-                  type: 'value',
-                  name: '場數',
-                  nameTextStyle: { color: isDark ? '#9ca3af' : '#6b7280' },
-                  axisLabel: { color: isDark ? '#9ca3af' : '#6b7280' },
-                  splitLine: { lineStyle: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' } },
-                },
-                {
-                  type: 'value',
-                  name: '勝率',
-                  min: 0,
-                  max: 100,
-                  nameTextStyle: { color: isDark ? '#9ca3af' : '#6b7280' },
-                  axisLabel: { color: isDark ? '#9ca3af' : '#6b7280', formatter: '{value}%' },
-                  splitLine: { show: false },
-                },
-              ],
-              dataZoom: [
-                {
-                  type: 'inside',
-                  realtime: false,
-                  startValue: statsFilters.dateFrom
-                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateFrom))
-                    : undefined,
-                  endValue: statsFilters.dateTo
-                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateTo))
-                    : undefined,
-                },
-                {
-                  type: 'slider',
-                  realtime: false,
-                  height: 18,
-                  startValue: statsFilters.dateFrom
-                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateFrom))
-                    : undefined,
-                  endValue: statsFilters.dateTo
-                    ? Math.max(0, stats.daily.findIndex(d => d.date === statsFilters.dateTo))
-                    : undefined,
-                },
-              ],
-              series: [
-                {
-                  name: '場數',
-                  type: 'bar',
-                  yAxisIndex: 0,
-                  data: stats.daily.map(d => d.games),
-                  itemStyle: { color: isDark ? 'rgba(99,102,241,0.55)' : 'rgba(99,102,241,0.35)', borderRadius: [4, 4, 0, 0] },
-                },
-                {
-                  name: '勝率',
-                  type: 'line',
-                  yAxisIndex: 1,
-                  data: stats.daily.map(d => (d.winRate == null ? null : Number(d.winRate.toFixed(2)))),
-                  smooth: true,
-                  symbolSize: 6,
-                  lineStyle: { width: 3, color: isDark ? '#22c55e' : '#16a34a' },
-                  itemStyle: { color: isDark ? '#22c55e' : '#16a34a' },
-                },
-              ],
-            }}
-            onEvents={{
-              datazoom: (p: any) => {
-                const batch = Array.isArray(p?.batch) ? p.batch[0] : null
-                const startValue = batch?.startValue
-                const endValue = batch?.endValue
-                const axis = stats.daily.map(d => d.date)
-
-                const start = typeof startValue === 'number' ? axis[startValue] : startValue
-                const end = typeof endValue === 'number' ? axis[endValue] : endValue
-
-                if (typeof start === 'string' && typeof end === 'string') {
-                  setStatsFilters(f => ({ ...f, dateFrom: start, dateTo: end }))
-                }
-              },
-              click: (p: any) => {
-                const date = String(p?.name ?? '')
-                if (!date) return
-                setStatsFilters(f => ({ ...f, dateFrom: date, dateTo: date }))
-              },
-            }}
-          />
+          <div className="max-h-80 overflow-y-auto">
+            <table className="w-full">
+              <thead className={isDark ? 'border-b border-white/10' : 'border-b border-gray-200 bg-gray-50'}>
+                <tr>
+                  <th className={`px-4 py-2 text-left text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>牌組</th>
+                  <th className={`px-4 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>場數</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.oppDecks.slice(0, 30).map((row, idx) => {
+                  const selected = statsFilters.oppDeckMain === row.name
+                  return (
+                    <tr
+                      key={row.name}
+                      onClick={() => setStatsFilters(f => ({ ...f, oppDeckMain: f.oppDeckMain === row.name ? undefined : row.name }))}
+                      className={`cursor-pointer transition-colors ${
+                        isDark
+                          ? `border-b border-white/5 hover:bg-white/5 ${selected ? 'bg-indigo-500/15' : idx % 2 === 1 ? 'bg-white/[0.02]' : ''}`
+                          : `border-b border-gray-100 hover:bg-gray-50 ${selected ? 'bg-indigo-50' : idx % 2 === 1 ? 'bg-gray-50/50' : ''}`
+                      }`}
+                    >
+                      <td className={`px-4 py-2 text-sm font-semibold ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{row.name}</td>
+                      <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.games}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className={`px-4 py-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+            只顯示前 30 名（依場數排序）
+          </div>
         </div>
       </div>
 
@@ -575,6 +502,87 @@ export default function SeasonMatchesPage() {
         </div>
         <div className={`px-4 py-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
           只顯示前 20 名（依場數排序）
+        </div>
+      </div>
+
+      {/* 每日明細表 */}
+      <div className={`mt-4 rounded-xl overflow-hidden ${isDark ? 'bg-[#1e1e26]' : 'bg-white border border-gray-200'}`}>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <div className={`text-xs uppercase tracking-wider font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>每日明細</div>
+            <div className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>點擊日期列以篩選</div>
+          </div>
+          {(statsFilters.dateFrom || statsFilters.dateTo) && (
+            <button
+              type="button"
+              onClick={() => setStatsFilters(f => ({ ...f, dateFrom: undefined, dateTo: undefined }))}
+              className={`text-sm font-semibold transition-colors ${isDark ? 'text-indigo-300 hover:text-indigo-200' : 'text-indigo-700 hover:text-indigo-800'}`}
+            >
+              重置
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full table-fixed">
+            <thead className={isDark ? 'border-b border-white/10' : 'border-b border-gray-200 bg-gray-50'}>
+              <tr>
+                <th className={`px-3 py-2 text-left text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[98px]`}>Date</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[60px]`}>場數</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[60px]`}>先攻</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[60px]`}>後攻</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[60px]`}>勝場</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[60px]`}>敗場</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[76px]`}>先攻率</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[70px]`}>勝率</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[86px]`}>先攻勝率</th>
+                <th className={`px-3 py-2 text-right text-xs font-semibold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'} w-[86px]`}>後攻勝率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.daily.map((row, idx) => {
+                const selectedRangeStart = statsFilters.dateFrom
+                const selectedRangeEnd = statsFilters.dateTo
+                const inRange =
+                  !!selectedRangeStart &&
+                  !!selectedRangeEnd &&
+                  row.date >= selectedRangeStart &&
+                  row.date <= selectedRangeEnd
+                const isSelected = inRange || (selectedRangeStart === row.date && selectedRangeEnd === row.date)
+
+                const pct = (v: number | null | undefined) => (v == null ? '-' : `${v.toFixed(1)}%`)
+
+                return (
+                  <tr
+                    key={row.date}
+                    onClick={() =>
+                      setStatsFilters(f =>
+                        f.dateFrom === row.date && f.dateTo === row.date
+                          ? { ...f, dateFrom: undefined, dateTo: undefined }
+                          : { ...f, dateFrom: row.date, dateTo: row.date },
+                      )
+                    }
+                    className={`cursor-pointer transition-colors ${
+                      isDark
+                        ? `border-b border-white/5 hover:bg-white/5 ${isSelected ? 'bg-indigo-500/15' : idx % 2 === 1 ? 'bg-white/[0.02]' : ''}`
+                        : `border-b border-gray-100 hover:bg-gray-50 ${isSelected ? 'bg-indigo-50' : idx % 2 === 1 ? 'bg-gray-50/50' : ''}`
+                    }`}
+                  >
+                    <td className={`px-3 py-2 text-sm ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{row.date}</td>
+                    <td className={`px-3 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.games}</td>
+                    <td className={`px-3 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.first}</td>
+                    <td className={`px-3 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.second}</td>
+                    <td className={`px-3 py-2 text-sm text-right font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>{row.wins}</td>
+                    <td className={`px-3 py-2 text-sm text-right font-semibold ${isDark ? 'text-red-400' : 'text-red-600'}`}>{row.losses}</td>
+                    <td className={`px-3 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{pct(row.firstRate)}</td>
+                    <td className={`px-3 py-2 text-sm text-right font-bold ${row.winRate != null && row.winRate >= 50 ? 'text-green-500' : 'text-red-500'}`}>{pct(row.winRate)}</td>
+                    <td className={`px-3 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{pct(row.firstWinRate)}</td>
+                    <td className={`px-3 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{pct(row.secondWinRate)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
