@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { matchesService } from '../services/matchesService'
 import { useTheme } from '../contexts/ThemeContext'
+import type { Match } from '../types/match'
 
 interface DefaultValues {
   date?: string
@@ -10,10 +11,11 @@ interface DefaultValues {
   myDeckSub?: string
 }
 
-interface AddMatchFormProps {
+interface MatchFormProps {
   onCancel: () => void
   onSuccess: () => void
   defaultValues?: DefaultValues
+  editMatch?: Match  // 如果有值，代表是編輯模式
 }
 
 // 階級選項
@@ -41,31 +43,49 @@ function parseRank(rank: string): { tier: string; level: string } {
   return { tier: '金', level: 'V' }
 }
 
-export default function AddMatchForm({ onCancel, onSuccess, defaultValues }: AddMatchFormProps) {
+export default function MatchForm({ onCancel, onSuccess, defaultValues, editMatch }: MatchFormProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const queryClient = useQueryClient()
+  const isEditMode = !!editMatch
+
+  // 決定初始值來源：編輯模式用 editMatch，新增模式用 defaultValues
+  const initialData = isEditMode ? {
+    date: editMatch.date.split('T')[0],
+    rank: editMatch.rank,
+    myDeckMain: editMatch.myDeck.main,
+    myDeckSub: editMatch.myDeck.sub || '無',
+    oppDeckMain: editMatch.oppDeck.main,
+    oppDeckSub: editMatch.oppDeck.sub || '無',
+    playOrder: editMatch.playOrder,
+    result: editMatch.result,
+    note: editMatch.note || '',
+  } : {
+    date: defaultValues?.date?.split('T')[0] || new Date().toISOString().split('T')[0],
+    rank: defaultValues?.rank || '金V',
+    myDeckMain: defaultValues?.myDeckMain || '',
+    myDeckSub: defaultValues?.myDeckSub || '無',
+    oppDeckMain: '',
+    oppDeckSub: '無',
+    playOrder: '先攻' as const,
+    result: 'W' as const,
+    note: '',
+  }
 
   // 解析預設階級
-  const defaultRank = defaultValues?.rank ? parseRank(defaultValues.rank) : { tier: '金', level: 'V' }
+  const defaultRank = parseRank(initialData.rank)
 
-  // 表單狀態 - 使用 defaultValues 或預設值
-  const [date, setDate] = useState(() => {
-    if (defaultValues?.date) {
-      // 確保格式為 YYYY-MM-DD
-      return defaultValues.date.split('T')[0]
-    }
-    return new Date().toISOString().split('T')[0]
-  })
+  // 表單狀態
+  const [date, setDate] = useState(initialData.date)
   const [rankTier, setRankTier] = useState<string>(defaultRank.tier)
   const [rankLevel, setRankLevel] = useState<string>(defaultRank.level)
-  const [myDeckMain, setMyDeckMain] = useState(defaultValues?.myDeckMain || '')
-  const [myDeckSub, setMyDeckSub] = useState(defaultValues?.myDeckSub || '無')
-  const [oppDeckMain, setOppDeckMain] = useState('')
-  const [oppDeckSub, setOppDeckSub] = useState('無')
-  const [playOrder, setPlayOrder] = useState<'先攻' | '後攻'>('先攻')
-  const [result, setResult] = useState<'W' | 'L'>('W')
-  const [note, setNote] = useState('')
+  const [myDeckMain, setMyDeckMain] = useState(initialData.myDeckMain)
+  const [myDeckSub, setMyDeckSub] = useState(initialData.myDeckSub)
+  const [oppDeckMain, setOppDeckMain] = useState(initialData.oppDeckMain)
+  const [oppDeckSub, setOppDeckSub] = useState(initialData.oppDeckSub)
+  const [playOrder, setPlayOrder] = useState<'先攻' | '後攻'>(initialData.playOrder)
+  const [result, setResult] = useState<'W' | 'L'>(initialData.result)
+  const [note, setNote] = useState(initialData.note)
 
   // 搜尋狀態
   const [myDeckSearch, setMyDeckSearch] = useState('')
@@ -87,11 +107,11 @@ export default function AddMatchForm({ onCancel, onSuccess, defaultValues }: Add
   // 組合階級字串
   const rank = `${rankTier}${rankLevel}`
 
-  // 提交 mutation
-  const mutation = useMutation({
+  // 新增 mutation
+  const createMutation = useMutation({
     mutationFn: () => matchesService.createMatch({
-      gameKey: 'master_duel',  // 預設 Master Duel
-      seasonCode: 'S48',        // 目前賽季
+      gameKey: 'master_duel',
+      seasonCode: 'S48',
       date,
       rank,
       myDeck: { main: myDeckMain || myDeckSearch, sub: myDeckSub === '無' ? null : myDeckSub },
@@ -105,6 +125,25 @@ export default function AddMatchForm({ onCancel, onSuccess, defaultValues }: Add
       onSuccess()
     },
   })
+
+  // 更新 mutation
+  const updateMutation = useMutation({
+    mutationFn: () => matchesService.updateMatch(editMatch!.id, {
+      date,
+      rank,
+      myDeck: { main: myDeckMain || myDeckSearch, sub: myDeckSub === '無' ? null : myDeckSub },
+      oppDeck: { main: oppDeckMain || oppDeckSearch, sub: oppDeckSub === '無' ? null : oppDeckSub },
+      playOrder,
+      result,
+      note: note || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] })
+      onSuccess()
+    },
+  })
+
+  const mutation = isEditMode ? updateMutation : createMutation
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,7 +170,7 @@ export default function AddMatchForm({ onCancel, onSuccess, defaultValues }: Add
   return (
     <form onSubmit={handleSubmit}>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold">新增對局</h2>
+        <h2 className="text-xl font-bold">{isEditMode ? '編輯對局' : '新增對局'}</h2>
         <button
           type="button"
           onClick={onCancel}
@@ -352,7 +391,7 @@ export default function AddMatchForm({ onCancel, onSuccess, defaultValues }: Add
         {/* 錯誤訊息 */}
         {mutation.isError && (
           <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
-            新增失敗，請稍後再試
+            {isEditMode ? '更新失敗，請稍後再試' : '新增失敗，請稍後再試'}
           </div>
         )}
 
@@ -374,7 +413,10 @@ export default function AddMatchForm({ onCancel, onSuccess, defaultValues }: Add
             disabled={mutation.isPending}
             className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
           >
-            {mutation.isPending ? '新增中...' : '確認新增'}
+            {mutation.isPending 
+              ? (isEditMode ? '更新中...' : '新增中...') 
+              : (isEditMode ? '確認更新' : '確認新增')
+            }
           </button>
         </div>
       </div>

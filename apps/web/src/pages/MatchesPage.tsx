@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { matchesService } from '../services/matchesService'
 import { useTheme } from '../contexts/ThemeContext'
-import AddMatchForm from '../components/AddMatchForm'
+import MatchForm from '../components/MatchForm'
+import type { Match } from '../types/match'
 
 // 根據階級返回對應顏色 (深色/淺色模式)
 function getRankColor(rank: string, isDark: boolean): string {
@@ -45,6 +46,7 @@ export default function MatchesPage() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [showAddForm, setShowAddForm] = useState(false)
+  const [editingMatch, setEditingMatch] = useState<Match | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
@@ -66,16 +68,27 @@ export default function MatchesPage() {
   const losses = data?.matches.filter(m => m.result === 'L').length || 0
   const total = data?.total || 0
 
+  // 顯示編輯表單
+  if (editingMatch) {
+    return (
+      <MatchForm
+        onCancel={() => setEditingMatch(null)}
+        onSuccess={() => setEditingMatch(null)}
+        editMatch={editingMatch}
+      />
+    )
+  }
+
   // 顯示新增表單
   if (showAddForm) {
     // 取得最新一筆記錄作為預設值
     const latestMatch = data?.matches[0]
     return (
-      <AddMatchForm
+      <MatchForm
         onCancel={() => setShowAddForm(false)}
         onSuccess={() => setShowAddForm(false)}
         defaultValues={latestMatch ? {
-          date: latestMatch.date.split('T')[0], // 確保格式為 YYYY-MM-DD
+          date: latestMatch.date.split('T')[0],
           rank: latestMatch.rank,
           myDeckMain: latestMatch.myDeck.main,
           myDeckSub: latestMatch.myDeck.sub || '無',
@@ -231,11 +244,14 @@ export default function MatchesPage() {
                   {/* 操作 - hover 時才顯示 */}
                   <td className="px-4 py-3 text-center">
                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className={`p-1.5 rounded transition-colors ${
-                        isDark 
-                          ? 'text-gray-500 hover:text-indigo-400 hover:bg-indigo-500/10'
-                          : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
-                      }`}>
+                      <button 
+                        onClick={() => setEditingMatch(match)}
+                        className={`p-1.5 rounded transition-colors ${
+                          isDark 
+                            ? 'text-gray-500 hover:text-indigo-400 hover:bg-indigo-500/10'
+                            : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
+                        }`}
+                      >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
