@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -94,6 +96,19 @@ func getEnv(key, fallback string) string {
 }
 
 func ensureSchema(db *sql.DB) error {
+	// Ensure base tables exist for a fresh DB.
+	exists, err := tableExists(db, "matches")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		log.Println("ℹ️  Database is empty (no tables yet); applying base schema migrations...")
+		if err := applyBaseMigrations(db); err != nil {
+			return fmt.Errorf("apply base migrations: %w", err)
+		}
+		log.Println("✓ Base schema is ready")
+	}
+
 	// Add matches.mode if missing (older DBs).
 	cols, err := getTableColumns(db, "matches")
 	if err != nil {
@@ -108,7 +123,64 @@ func ensureSchema(db *sql.DB) error {
 		}
 		log.Println("✓ Applied runtime migration: matches.mode")
 	}
+
 	return nil
+}
+
+func tableExists(db *sql.DB, table string) (bool, error) {
+	var name string
+	err := db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
+		table,
+	).Scan(&name)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(name, table), nil
+}
+
+func applyBaseMigrations(db *sql.DB) error {
+	// These migrations create the initial schema + deck_templates.
+	// We keep this lightweight so a new user can simply run `go run .`.
+	migrationFiles := []string{
+		"001_create_schema.sql",
+		"002_add_deck_theme.sql",
+		"003_add_match_mode.sql",
+	}
+
+	for _, f := range migrationFiles {
+		contents, err := readMigrationFile(f)
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(contents); err != nil {
+			return fmt.Errorf("exec %s: %w", f, err)
+		}
+	}
+
+	return nil
+}
+
+func readMigrationFile(filename string) (string, error) {
+	// Try common working directories:
+	// - when running from apps/api: ./migrations/<file>
+	// - when running from repo root: ./apps/api/migrations/<file>
+	candidates := []string{
+		filepath.Join("migrations", filename),
+		filepath.Join("apps", "api", "migrations", filename),
+	}
+	var lastErr error
+	for _, p := range candidates {
+		b, err := os.ReadFile(p)
+		if err == nil {
+			return string(b), nil
+		}
+		lastErr = err
+	}
+	return "", fmt.Errorf("read migration %s: %w", filename, lastErr)
 }
 
 func getTableColumns(db *sql.DB, table string) (map[string]struct{}, error) {
