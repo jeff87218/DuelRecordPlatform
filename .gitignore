@@ -10,6 +10,7 @@ dist/
 
 # Go
 *.exe
+!apps/api/duellog-api.exe
 *.exe~
 *.dll
 *.so
@@ -43,6 +44,10 @@ apps/api/data/
 *.backup
 apps/api/*.backup
 apps/api/duellog.db.backup
+
+# Local generated exports / temp files
+apps/api/_deck_templates_export.sql
+apps/api/_tmp_fresh*.db
 
 # Docker
 docker-compose.override.yml
