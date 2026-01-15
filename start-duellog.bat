@@ -1,9 +1,8 @@
 @echo off
 setlocal
 
-REM One-click launcher for Windows users.
-REM - Starts Go API server (apps\api)
-REM - Starts Vite dev server (apps\web)
+REM Use UTF-8 output (messages may still depend on console font)
+chcp 65001 >nul
 
 pushd "%~dp0"
 echo === DuelLog Launcher ===
@@ -13,32 +12,26 @@ echo.
 REM Basic checks
 where go >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] 找不到 Go。
-  echo 請先安裝 Go（建議 Go 1.25.5+），安裝後重新開啟再試一次。
-  echo.
+  echo [ERROR] 找不到 Go。請先安裝 Go（建議 Go 1.25.5+）。
   pause
   exit /b 1
 )
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] 找不到 Node.js。
-  echo 請先安裝 Node.js（建議 Node 22.2.0+），安裝後重新開啟再試一次。
-  echo.
+  echo [ERROR] 找不到 Node.js。請先安裝 Node.js（建議 Node 22.2.0+）。
   pause
   exit /b 1
 )
 
 where npm >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] 找不到 npm。
-  echo 請確認 Node.js 安裝完整（含 npm）。
-  echo.
+  echo [ERROR] 找不到 npm。請確認 Node.js 安裝完整（含 npm）。
   pause
   exit /b 1
 )
 
-REM Go sqlite3 uses CGO on Windows; warn if gcc not found (will fail at build time).
+REM Go sqlite3 uses CGO on Windows; warn if gcc not found
 where gcc >nul 2>nul
 if errorlevel 1 (
   echo [WARN] 找不到 GCC（C compiler）。
@@ -47,15 +40,14 @@ if errorlevel 1 (
   echo.
 )
 
-REM Start backend + frontend in separate windows so users can close them to stop.
 echo Starting backend...
-start "DuelLog API" cmd /k "cd /d %~dp0apps\api && echo [API] Starting... && go run ."
+start "DuelLog API" cmd /k "cd /d ""%~dp0apps\api"" && echo [API] Starting... && go run ."
 
 echo Starting frontend...
-start "DuelLog Web" cmd /k "cd /d %~dp0apps\web && if not exist node_modules (echo [WEB] Installing dependencies... && npm install) && echo [WEB] Starting... && npm run dev"
+start "DuelLog Web" cmd /k "cd /d ""%~dp0apps\web"" && if not exist node_modules (echo [WEB] Installing dependencies... && (if exist package-lock.json (npm ci) else (npm install))) && echo [WEB] Starting... && npm run dev"
 
-REM Open browser (dev server is usually 5173)
 echo Opening browser...
+echo 若頁面尚未就緒，請稍等 5~10 秒後重新整理。
 timeout /t 2 /nobreak >nul
 start "" "http://localhost:5173/history"
 
