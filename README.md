@@ -21,8 +21,8 @@ Master Duel 對局記錄平台：用更快的方式記錄、回顧與統計你�
 ## 快速開始（一般使用者：推薦）
 
 如果你不熟程式，建議直接下載 zip 或用 GitHub Desktop / git clone 拿到檔案後，直接執行我準備好的腳本 `start-duellog.bat`。
-![image](https://hackmd.io/_uploads/rkxHZyLB-e.png)
-![image](https://hackmd.io/_uploads/S1jhW18Hbg.png)
+
+<img width="1193" height="649" alt="image" src="https://github.com/user-attachments/assets/0a05d4a4-49b9-4701-97a2-cf1aa912a3b0" />
 
 ### 1) 下載並解壓縮或是從github上clone
 
