@@ -116,21 +116,21 @@ npm run dev
 3. 可選擇的牌組管理(比如之後出K9, 可以在手動新增並選擇牌組類別來決定顏色，這樣就可以在對局紀錄加入K9的牌組對局紀錄)
 
 ### 新增對局紀錄
-**新增紀錄**
+*新增紀錄*
 <img width="1249" height="635" alt="image" src="https://github.com/user-attachments/assets/dc86eb1f-3b40-4c06-b6b2-e7401fbd974b" />
-**並填妥對局資訊**
+*並填妥對局資訊*
 <img width="2506" height="1545" alt="image" src="https://github.com/user-attachments/assets/6bf09dbc-0387-405a-bd3f-1858f72b47b4" />
 
 ### 使用情境
-**查看自己牌組本季遇上某一套牌的統計數據**
+*查看自己牌組本季遇上某一套牌的統計數據*
 <img width="1197" height="1498" alt="image" src="https://github.com/user-attachments/assets/4aa5cfcd-c58f-4c95-a251-1d4335661603" />
 
-**查看自己某一套牌本季遇到的牌組對局統計數據**
+*查看自己某一套牌本季遇到的牌組對局統計數據*
 <img width="1200" height="1391" alt="image" src="https://github.com/user-attachments/assets/36409dff-74b4-4121-92d3-4496891f62b6" />
 
-**查看自己某一套牌歷史遇到牌組隊局統計數據**
+*查看自己某一套牌歷史遇到牌組隊局統計數據*
 <img width="1223" height="1195" alt="image" src="https://github.com/user-attachments/assets/6ef52d33-e5c7-4753-9d41-ca4abca9a821" />
 
-**該季每日數據**
+*該季每日數據*
 <img width="1158" height="652" alt="image" src="https://github.com/user-attachments/assets/48a434ad-3963-478c-bb23-b48e46dca42e" />
 
