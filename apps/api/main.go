@@ -44,6 +44,19 @@ func main() {
 		log.Fatal("Failed to ensure schema:", err)
 	}
 
+	// Auto-seed: new users should see default deck_templates without any manual steps.
+	if shouldAutoSeed() {
+		need, err := needsSeed(db)
+		if err != nil {
+			log.Fatal("Failed to check seed status:", err)
+		}
+		if need {
+			if err := applySeed(db); err != nil {
+				log.Fatal("Failed to apply seed:", err)
+			}
+		}
+	}
+
 	// 建立 Fiber app
 	app := fiber.New(fiber.Config{
 		AppName: "DuelLog API v1.0",
@@ -93,6 +106,64 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func shouldAutoSeed() bool {
+	val := strings.TrimSpace(strings.ToLower(getEnv("AUTO_SEED", "true")))
+	return !(val == "0" || val == "false" || val == "no" || val == "off")
+}
+
+func needsSeed(db *sql.DB) (bool, error) {
+	// Seed is considered needed if any of the essential base data is missing.
+	// We use these markers:
+	// - default user exists
+	// - master_duel game exists
+	// - deck_templates has at least one row
+	var userCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount); err != nil {
+		return false, err
+	}
+	var gameCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM games WHERE key = ?", "master_duel").Scan(&gameCount); err != nil {
+		return false, err
+	}
+	var tplCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM deck_templates").Scan(&tplCount); err != nil {
+		return false, err
+	}
+
+	return userCount == 0 || gameCount == 0 || tplCount == 0, nil
+}
+
+func applySeed(db *sql.DB) error {
+	seedSQL, err := readSeedFile("seed.sql")
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec(seedSQL); err != nil {
+		return err
+	}
+	log.Println("✓ Seed data inserted")
+	return nil
+}
+
+func readSeedFile(filename string) (string, error) {
+	// Try common working directories:
+	// - when running from apps/api: ./seed.sql
+	// - when running from repo root: ./apps/api/seed.sql
+	candidates := []string{
+		filename,
+		filepath.Join("apps", "api", filename),
+	}
+	var lastErr error
+	for _, p := range candidates {
+		b, err := os.ReadFile(p)
+		if err == nil {
+			return string(b), nil
+		}
+		lastErr = err
+	}
+	return "", fmt.Errorf("read seed %s: %w", filename, lastErr)
 }
 
 func ensureSchema(db *sql.DB) error {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -58,56 +59,47 @@ func (h *MatchesHandler) GetMatches(c *fiber.Ctx) error {
 		WHERE 1=1
 	`
 
-	// 動態加入篩選條件
+	// 動態加入篩選條件（SQLite 使用 ? 佔位符）
 	args := []interface{}{}
-	argPos := 1
 
 	if seasonCode != "" {
-		query += fmt.Sprintf(" AND s.code = $%d", argPos)
+		query += " AND s.code = ?"
 		args = append(args, seasonCode)
-		argPos++
 	}
 
 	if mode != "" {
-		query += fmt.Sprintf(" AND m.mode = $%d", argPos)
+		query += " AND m.mode = ?"
 		args = append(args, mode)
-		argPos++
 	}
 
 	if myDeckMain != "" {
-		query += fmt.Sprintf(" AND my_deck.main = $%d", argPos)
+		query += " AND my_deck.main = ?"
 		args = append(args, myDeckMain)
-		argPos++
 	}
 
 	if oppDeckMain != "" {
-		query += fmt.Sprintf(" AND opp_deck.main = $%d", argPos)
+		query += " AND opp_deck.main = ?"
 		args = append(args, oppDeckMain)
-		argPos++
 	}
 
 	if result != "" {
-		query += fmt.Sprintf(" AND m.result = $%d", argPos)
+		query += " AND m.result = ?"
 		args = append(args, result)
-		argPos++
 	}
 
 	if playOrder != "" {
-		query += fmt.Sprintf(" AND m.play_order = $%d", argPos)
+		query += " AND m.play_order = ?"
 		args = append(args, playOrder)
-		argPos++
 	}
 
 	if dateFrom != "" {
-		query += fmt.Sprintf(" AND m.date >= $%d", argPos)
+		query += " AND m.date >= ?"
 		args = append(args, dateFrom)
-		argPos++
 	}
 
 	if dateTo != "" {
-		query += fmt.Sprintf(" AND m.date <= $%d", argPos)
+		query += " AND m.date <= ?"
 		args = append(args, dateTo)
-		argPos++
 	}
 
 	// 按日期排序（最新在前）
@@ -195,10 +187,9 @@ func (h *MatchesHandler) CreateMatch(c *fiber.Ctx) error {
 	}
 
 	// 取得 season_id
-	var seasonID string
-	err = h.db.QueryRow("SELECT id FROM seasons WHERE code = ? AND game_id = ?", req.SeasonCode, gameID).Scan(&seasonID)
+	seasonID, err := h.getOrCreateSeasonID(gameID, req.SeasonCode)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "找不到賽季", "seasonCode": req.SeasonCode})
+		return c.Status(500).JSON(fiber.Map{"error": "處理賽季失敗", "details": err.Error()})
 	}
 
 	// 取得或建立我的牌組
@@ -398,7 +389,11 @@ func (h *MatchesHandler) findOrCreateDeck(gameID, main string, sub *string) (str
 func (h *MatchesHandler) ensureDeckTemplate(gameID, deckName string) {
 	// 檢查是否已存在
 	var exists bool
-	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM deck_templates WHERE main = ?)", deckName).Scan(&exists)
+	err := h.db.QueryRow(
+		"SELECT EXISTS(SELECT 1 FROM deck_templates WHERE game_id = ? AND main = ? AND deck_type = 'main')",
+		gameID,
+		deckName,
+	).Scan(&exists)
 	if err != nil || exists {
 		return // 已存在或查詢失敗，不需要建立
 	}
@@ -409,6 +404,44 @@ func (h *MatchesHandler) ensureDeckTemplate(gameID, deckName string) {
 		INSERT INTO deck_templates (id, game_id, main, theme, deck_type, created_at)
 		VALUES (?, ?, ?, '無', 'main', CURRENT_TIMESTAMP)
 	`, templateID, gameID, deckName)
+}
+
+func (h *MatchesHandler) getOrCreateSeasonID(gameID, seasonCode string) (string, error) {
+	var seasonID string
+	err := h.db.QueryRow("SELECT id FROM seasons WHERE code = ? AND game_id = ?", seasonCode, gameID).Scan(&seasonID)
+	if err == nil {
+		return seasonID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
+	// Not found: auto-create so users can start recording immediately.
+	seasonID = uuid.New().String()
+
+	// If seasonCode looks like YYYY-MM, fill start/end dates; otherwise leave them NULL.
+	var startDate any = nil
+	var endDate any = nil
+	if t, parseErr := time.Parse("2006-01", seasonCode); parseErr == nil {
+		start := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+		end := start.AddDate(0, 1, 0).AddDate(0, 0, -1)
+		startDate = start.Format("2006-01-02")
+		endDate = end.Format("2006-01-02")
+	}
+
+	_, err = h.db.Exec(
+		"INSERT INTO seasons (id, game_id, code, start_date, end_date) VALUES (?, ?, ?, ?, ?)",
+		seasonID, gameID, seasonCode, startDate, endDate,
+	)
+	if err != nil {
+		// If another request created it concurrently, just re-read.
+		if readErr := h.db.QueryRow("SELECT id FROM seasons WHERE code = ? AND game_id = ?", seasonCode, gameID).Scan(&seasonID); readErr == nil {
+			return seasonID, nil
+		}
+		return "", err
+	}
+
+	return seasonID, nil
 }
 
 // joinStrings 連接字串陣列（輔助函數）
