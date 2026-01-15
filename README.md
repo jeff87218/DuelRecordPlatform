@@ -136,3 +136,5 @@ npm run dev
 *該季每日數據*
 <img width="1158" height="652" alt="image" src="https://github.com/user-attachments/assets/48a434ad-3963-478c-bb23-b48e46dca42e" />
 
+有什麼建議在歡迎提出，感謝!
+
