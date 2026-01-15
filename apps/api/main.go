@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	_ "github.com/glebarez/go-sqlite"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/harvc/duellog/apps/api/handlers"
 	"github.com/joho/godotenv"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 var db *sql.DB
@@ -27,7 +27,7 @@ func main() {
 	// 初始化 SQLite 資料庫
 	var err error
 	dbPath := getEnv("DB_PATH", "./duellog.db")
-	db, err = sql.Open("sqlite3", dbPath)
+	db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -84,6 +84,15 @@ func main() {
 	app.Post("/deck-templates", func(c *fiber.Ctx) error { return handlers.CreateDeckTemplate(c, db) })
 	app.Patch("/deck-templates/:id", func(c *fiber.Ctx) error { return handlers.UpdateDeckTemplate(c, db) })
 	app.Delete("/deck-templates/:id", func(c *fiber.Ctx) error { return handlers.DeleteDeckTemplate(c, db) })
+
+	// Serve Static Files (Frontend)
+	// 假設前端構建後的檔案在 ../web/dist
+	app.Static("/", "../web/dist")
+
+	// SPA Fallback: 任何未匹配的路由都導向 index.html
+	app.Get("/*", func(c *fiber.Ctx) error {
+		return c.SendFile("./web/dist/index.html")
+	})
 
 	// 啟動伺服器
 	port := getEnv("PORT", "8080")
