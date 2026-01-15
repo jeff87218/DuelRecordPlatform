@@ -40,16 +40,8 @@ func main() {
 	log.Println("✓ Database connected successfully")
 
 	// Ensure schema is up-to-date for local SQLite files.
-	baseApplied, err := ensureSchema(db)
-	if err != nil {
+	if err := ensureSchema(db); err != nil {
 		log.Fatal("Failed to ensure schema:", err)
-	}
-
-	// Auto-seed on first run (fresh DB) so new users see example data.
-	if baseApplied && shouldAutoSeed() {
-		if err := applySeed(db); err != nil {
-			log.Fatal("Failed to apply seed:", err)
-		}
 	}
 
 	// 建立 Fiber app
@@ -103,84 +95,36 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func ensureSchema(db *sql.DB) (bool, error) {
+func ensureSchema(db *sql.DB) error {
 	// Ensure base tables exist for a fresh DB.
 	exists, err := tableExists(db, "matches")
 	if err != nil {
-		return false, err
+		return err
 	}
-	baseApplied := false
 	if !exists {
 		log.Println("ℹ️  Database is empty (no tables yet); applying base schema migrations...")
 		if err := applyBaseMigrations(db); err != nil {
-			return false, fmt.Errorf("apply base migrations: %w", err)
+			return fmt.Errorf("apply base migrations: %w", err)
 		}
-		baseApplied = true
 		log.Println("✓ Base schema is ready")
 	}
 
 	// Add matches.mode if missing (older DBs).
 	cols, err := getTableColumns(db, "matches")
 	if err != nil {
-		return baseApplied, err
+		return err
 	}
 	if _, ok := cols["mode"]; !ok {
 		if _, err := db.Exec("ALTER TABLE matches ADD COLUMN mode TEXT NOT NULL DEFAULT 'Ranked' CHECK (mode IN ('Ranked','Rating','DC'))"); err != nil {
-			return baseApplied, fmt.Errorf("add matches.mode: %w", err)
+			return fmt.Errorf("add matches.mode: %w", err)
 		}
 		if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_matches_mode ON matches(mode)"); err != nil {
-			return baseApplied, fmt.Errorf("create idx_matches_mode: %w", err)
+			return fmt.Errorf("create idx_matches_mode: %w", err)
 		}
 		log.Println("✓ Applied runtime migration: matches.mode")
 	}
 
-	return baseApplied, nil
-}
-
-func shouldAutoSeed() bool {
-	val := strings.TrimSpace(strings.ToLower(getEnv("AUTO_SEED", "true")))
-	return !(val == "0" || val == "false" || val == "no" || val == "off")
-}
-
-func applySeed(db *sql.DB) error {
-	// Only seed if the DB is truly empty of app data.
-	// We use presence of any users as a conservative marker.
-	var userCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount); err != nil {
-		return err
-	}
-	if userCount > 0 {
-		return nil
-	}
-
-	seedSQL, err := readSeedFile("seed.sql")
-	if err != nil {
-		return err
-	}
-	if _, err := db.Exec(seedSQL); err != nil {
-		return err
-	}
-	log.Println("✓ Seed data inserted")
 	return nil
-}
-
-func readSeedFile(filename string) (string, error) {
-	// Try common working directories:
-	// - when running from apps/api: ./seed.sql
-	// - when running from repo root: ./apps/api/seed.sql
-	candidates := []string{
-		filename,
-		filepath.Join("apps", "api", filename),
-	}
-	var lastErr error
-	for _, p := range candidates {
-		b, err := os.ReadFile(p)
-		if err == nil {
-			return string(b), nil
-		}
-		lastErr = err
-	}
-	return "", fmt.Errorf("read seed %s: %w", filename, lastErr)
 }
 
 func tableExists(db *sql.DB, table string) (bool, error) {
